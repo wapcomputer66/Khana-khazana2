@@ -3,9 +3,18 @@ import { db } from '@/lib/db'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 
-// POST create new order
+// POST create new order for the restaurant
 export async function POST(request: NextRequest) {
   try {
+    const session = await getServerSession(authOptions)
+
+    if (!session || !session.user.restaurantId) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      )
+    }
+
     const body = await request.json()
     const {
       orderNumber,
@@ -25,10 +34,23 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Create order with items
-    // Get first user for development (in production, use authenticated user)
-    const user = await db.user.findFirst()
+    // Verify all menu items belong to the restaurant
+    const menuItemIds = items.map((item: any) => item.menuItemId)
+    const menuItems = await db.menuItem.findMany({
+      where: {
+        id: { in: menuItemIds },
+        restaurantId: session.user.restaurantId
+      }
+    })
 
+    if (menuItems.length !== items.length) {
+      return NextResponse.json(
+        { success: false, error: 'Some menu items are invalid' },
+        { status: 400 }
+      )
+    }
+
+    // Create order with items
     const order = await db.order.create({
       data: {
         orderNumber,
@@ -40,7 +62,8 @@ export async function POST(request: NextRequest) {
         totalAmount: parseFloat(totalAmount),
         paymentStatus: 'paid',
         orderStatus: 'completed',
-        createdById: user?.id || 'default-user',
+        createdById: session.user.id,
+        restaurantId: session.user.restaurantId,
         items: {
           create: items.map((item: any) => ({
             menuItemId: item.menuItemId,
@@ -69,15 +92,26 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// GET all orders
+// GET all orders for the restaurant
 export async function GET(request: NextRequest) {
   try {
+    const session = await getServerSession(authOptions)
+
+    if (!session || !session.user.restaurantId) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      )
+    }
+
     const { searchParams } = new URL(request.url)
     const startDate = searchParams.get('startDate')
     const endDate = searchParams.get('endDate')
     const limit = parseInt(searchParams.get('limit') || '50')
 
-    const where: any = {}
+    const where: any = {
+      restaurantId: session.user.restaurantId
+    }
 
     if (startDate && endDate) {
       where.createdAt = {

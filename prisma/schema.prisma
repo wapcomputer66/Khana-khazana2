@@ -1,4 +1,4 @@
-// Restaurant Billing System Schema
+// Restaurant Billing System Schema - Multi-Tenant
 
 generator client {
   provider = "prisma-client-js"
@@ -9,47 +9,76 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String
-  password  String
-  role      String   @default("staff") // admin, staff, cashier
-  orders    Order[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-model Category {
+model Restaurant {
   id          String     @id @default(cuid())
-  name        String     @unique
-  description String?
+  name        String
+  address     String?
+  phone       String?
+  gstNumber   String?
+  email       String?
   isActive    Boolean    @default(true)
-  sortOrder   Int        @default(0)
+  users       User[]
+  categories  Category[]
   menuItems   MenuItem[]
+  orders      Order[]
+  settings    Settings?
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
 }
 
+model User {
+  id            String      @id @default(cuid())
+  email         String      @unique
+  name          String
+  password      String
+  role          String      @default("staff") // admin, staff, cashier
+  restaurantId  String
+  restaurant    Restaurant  @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  orders        Order[]
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@unique([email, restaurantId])
+}
+
+model Category {
+  id           String       @id @default(cuid())
+  name         String
+  description  String?
+  isActive     Boolean      @default(true)
+  sortOrder    Int          @default(0)
+  restaurantId  String
+  restaurant   Restaurant   @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  menuItems    MenuItem[]
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@unique([name, restaurantId])
+}
+
 model MenuItem {
-  id          String      @id @default(cuid())
-  name        String
-  description String?
-  price       Float
-  categoryId  String
-  category    Category    @relation(fields: [categoryId], references: [id])
-  isActive    Boolean     @default(true)
-  image       String?
-  stock       Int         @default(0)
-  unit        String?     // pcs, kg, etc.
-  orderItems  OrderItem[]
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  id           String       @id @default(cuid())
+  name         String
+  description  String?
+  price        Float
+  categoryId   String
+  category     Category     @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  restaurantId String
+  restaurant   Restaurant   @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  isActive     Boolean      @default(true)
+  image        String?
+  stock        Int          @default(0)
+  unit         String?      // pcs, kg, etc.
+  orderItems   OrderItem[]
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@unique([name, categoryId, restaurantId])
 }
 
 model Order {
   id              String      @id @default(cuid())
-  orderNumber     String      @unique
+  orderNumber     String
   customerName    String?
   customerPhone   String?
   tableNumber     String?
@@ -64,8 +93,12 @@ model Order {
   kots            KOT[]
   createdById     String
   createdBy       User        @relation(fields: [createdById], references: [id])
+  restaurantId    String
+  restaurant      Restaurant  @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
+
+  @@unique([orderNumber, restaurantId])
 }
 
 model OrderItem {
@@ -84,7 +117,7 @@ model OrderItem {
 
 model KOT {
   id           String   @id @default(cuid())
-  kotNumber    String   @unique
+  kotNumber    String
   orderId      String
   order        Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
   items        KOTItem[]
@@ -92,7 +125,7 @@ model KOT {
   notes        String?
   printCount   Int      @default(1)
   createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  updatedAt    DateTime @default(now())
 }
 
 model KOTItem {
@@ -107,19 +140,21 @@ model KOTItem {
 }
 
 model Settings {
-  id              String   @id @default(cuid())
-  restaurantName  String   @default("My Restaurant")
+  id              String      @id @default(cuid())
+  restaurantName  String      @default("My Restaurant")
   address         String?
   phone           String?
   gstNumber       String?
-  taxRate         Float    @default(0)
-  currency        String   @default("₹")
-  printerType     String   @default("thermal") // thermal, bluetooth
+  taxRate         Float       @default(0)
+  currency        String      @default("₹")
+  printerType     String      @default("thermal") // thermal, bluetooth
   printerName     String?
-  paperWidth      Int      @default(80) // 58mm or 80mm
-  kotCopies       Int      @default(1)
-  billCopies      Int      @default(1)
-  showLogo        Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  paperWidth      Int         @default(80) // 58mm or 80mm
+  kotCopies       Int         @default(1)
+  billCopies      Int         @default(1)
+  showLogo        Boolean     @default(true)
+  restaurantId    String      @unique
+  restaurant      Restaurant  @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
 }

@@ -17,7 +17,10 @@ export const authOptions = {
         }
 
         const user = await db.user.findUnique({
-          where: { email: credentials.email }
+          where: { email: credentials.email },
+          include: {
+            restaurant: true
+          }
         })
 
         if (!user) {
@@ -37,7 +40,9 @@ export const authOptions = {
           id: user.id,
           email: user.email,
           name: user.name,
-          role: user.role
+          role: user.role,
+          restaurantId: user.restaurantId,
+          restaurantName: user.restaurant.name
         }
       }
     })
@@ -53,6 +58,8 @@ export const authOptions = {
       if (user) {
         token.role = user.role
         token.id = user.id
+        token.restaurantId = user.restaurantId
+        token.restaurantName = user.restaurantName
       }
       return token
     },
@@ -60,6 +67,8 @@ export const authOptions = {
       if (session.user) {
         session.user.role = token.role as string
         session.user.id = token.id as string
+        session.user.restaurantId = token.restaurantId as string
+        session.user.restaurantName = token.restaurantName as string
       }
       return session
     }
