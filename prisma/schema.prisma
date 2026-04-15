@@ -1,0 +1,125 @@
+// Restaurant Billing System Schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  password  String
+  role      String   @default("staff") // admin, staff, cashier
+  orders    Order[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Category {
+  id          String     @id @default(cuid())
+  name        String     @unique
+  description String?
+  isActive    Boolean    @default(true)
+  sortOrder   Int        @default(0)
+  menuItems   MenuItem[]
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
+
+model MenuItem {
+  id          String      @id @default(cuid())
+  name        String
+  description String?
+  price       Float
+  categoryId  String
+  category    Category    @relation(fields: [categoryId], references: [id])
+  isActive    Boolean     @default(true)
+  image       String?
+  stock       Int         @default(0)
+  unit        String?     // pcs, kg, etc.
+  orderItems  OrderItem[]
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+model Order {
+  id              String      @id @default(cuid())
+  orderNumber     String      @unique
+  customerName    String?
+  customerPhone   String?
+  tableNumber     String?
+  subtotal        Float
+  tax             Float       @default(0)
+  discount        Float       @default(0)
+  totalAmount     Float
+  paymentMethod   String?     // cash, card, upi, etc.
+  paymentStatus   String      @default("pending") // pending, paid, partial
+  orderStatus     String      @default("active") // active, completed, cancelled
+  items           OrderItem[]
+  kots            KOT[]
+  createdById     String
+  createdBy       User        @relation(fields: [createdById], references: [id])
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+}
+
+model OrderItem {
+  id          String   @id @default(cuid())
+  orderId     String
+  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  menuItemId  String
+  menuItem    MenuItem @relation(fields: [menuItemId], references: [id])
+  quantity    Int
+  price       Float     // price at time of order
+  subtotal    Float
+  notes       String?
+  isPrinted   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+}
+
+model KOT {
+  id           String   @id @default(cuid())
+  kotNumber    String   @unique
+  orderId      String
+  order        Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  items        KOTItem[]
+  status       String   @default("pending") // pending, preparing, ready, served
+  notes        String?
+  printCount   Int      @default(1)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model KOTItem {
+  id        String   @id @default(cuid())
+  kotId     String
+  kot       KOT      @relation(fields: [kotId], references: [id], onDelete: Cascade)
+  itemId    String
+  itemName  String
+  quantity  Int
+  notes     String?
+  createdAt DateTime @default(now())
+}
+
+model Settings {
+  id              String   @id @default(cuid())
+  restaurantName  String   @default("My Restaurant")
+  address         String?
+  phone           String?
+  gstNumber       String?
+  taxRate         Float    @default(0)
+  currency        String   @default("₹")
+  printerType     String   @default("thermal") // thermal, bluetooth
+  printerName     String?
+  paperWidth      Int      @default(80) // 58mm or 80mm
+  kotCopies       Int      @default(1)
+  billCopies      Int      @default(1)
+  showLogo        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
