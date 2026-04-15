@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Utensils, Loader2 } from 'lucide-react'
+import { Utensils, Loader2, UserPlus } from 'lucide-react'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -114,6 +114,18 @@ export default function LoginPage() {
             <p className="text-sm text-orange-700">
               पासवर्ड: admin123
             </p>
+          </div>
+
+          <div className="text-center pt-4 border-t">
+            <p className="text-gray-600 mb-3">नया खाता नहीं है?</p>
+            <Button
+              onClick={() => router.push('/signup')}
+              variant="outline"
+              className="w-full"
+            >
+              <UserPlus className="mr-2 h-4 w-4" />
+              साइन अप करें
+            </Button>
           </div>
         </CardContent>
       </Card>
