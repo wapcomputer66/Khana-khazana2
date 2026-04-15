@@ -29,7 +29,10 @@ import {
   Edit,
   Sparkles,
   Loader2,
-  Save
+  Save,
+  Upload,
+  RefreshCw,
+  X
 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 
@@ -37,6 +40,8 @@ interface Category {
   id: string
   name: string
   description?: string
+  isActive: boolean
+  sortOrder: number
 }
 
 interface MenuItem {
@@ -47,6 +52,7 @@ interface MenuItem {
   categoryId: string
   category?: Category
   isActive: boolean
+  hasVariations?: boolean
 }
 
 export default function MenuManagementPage() {
@@ -55,12 +61,24 @@ export default function MenuManagementPage() {
   const [menuItems, setMenuItems] = useState<MenuItem[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [autoRefresh, setAutoRefresh] = useState(true)
+  
+  // Dialog states
   const [showAddDialog, setShowAddDialog] = useState(false)
+  const [showEditDialog, setShowEditDialog] = useState(false)
   const [showCategoryDialog, setShowCategoryDialog] = useState(false)
+  const [showEditCategoryDialog, setShowEditCategoryDialog] = useState(false)
   const [showAIDialog, setShowAIDialog] = useState(false)
+  const [showImageDialog, setShowImageDialog] = useState(false)
+  
+  // AI and Image states
   const [aiGenerating, setAiGenerating] = useState(false)
   const [aiInput, setAiInput] = useState('')
-
+  const [imageDetecting, setImageDetecting] = useState(false)
+  const [detectedItems, setDetectedItems] = useState<MenuItem[]>([])
+  const [selectedImage, setSelectedImage] = useState<File | null>(null)
+  const [imagePreview, setImagePreview] = useState<string>('')
+  
   // Add Item Form State
   const [newItem, setNewItem] = useState({
     name: '',
@@ -68,19 +86,52 @@ export default function MenuManagementPage() {
     price: '',
     categoryId: ''
   })
-
+  
+  // Edit Item Form State
+  const [editingItem, setEditingItem] = useState<MenuItem | null>(null)
+  const [editItemData, setEditItemData] = useState({
+    name: '',
+    description: '',
+    price: '',
+    categoryId: ''
+  })
+  
   // Add Category Form State
   const [newCategory, setNewCategory] = useState({
     name: '',
     description: ''
   })
+  
+  // Edit Category Form State
+  const [editingCategory, setEditingCategory] = useState<Category | null>(null)
+  const [editCategoryData, setEditCategoryData] = useState({
+    name: '',
+    description: ''
+  })
+
+  // Live sync - auto refresh data every 10 seconds
+  useEffect(() => {
+    let intervalId: NodeJS.Timeout | null = null
+    
+    if (autoRefresh) {
+      intervalId = setInterval(() => {
+        fetchData(true) // true = silent refresh (no loading state)
+      }, 10000) // Refresh every 10 seconds
+    }
+    
+    return () => {
+      if (intervalId) clearInterval(intervalId)
+    }
+  }, [autoRefresh])
 
   useEffect(() => {
     fetchData()
   }, [])
 
-  const fetchData = async () => {
+  const fetchData = async (silent = false) => {
     try {
+      if (!silent) setLoading(true)
+      
       const [categoriesRes, itemsRes] = await Promise.all([
         fetch('/api/categories'),
         fetch('/api/menu-items')
@@ -92,13 +143,15 @@ export default function MenuManagementPage() {
       setCategories(categoriesData.data || [])
       setMenuItems(itemsData.data || [])
     } catch (error) {
-      toast({
-        title: 'त्रुटि',
-        description: 'डेटा लोड करने में विफल',
-        variant: 'destructive'
-      })
+      if (!silent) {
+        toast({
+          title: 'त्रुटि',
+          description: 'डेटा लोड करने में विफल',
+          variant: 'destructive'
+        })
+      }
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }
 
@@ -112,6 +165,7 @@ export default function MenuManagementPage() {
       return
     }
 
+    setSaving(true)
     try {
       const res = await fetch('/api/categories', {
         method: 'POST',
@@ -134,7 +188,79 @@ export default function MenuManagementPage() {
         description: 'कैटेगरी जोड़ने में विफल',
         variant: 'destructive'
       })
+    } finally {
+      setSaving(false)
     }
+  }
+
+  const handleEditCategory = async () => {
+    if (!editingCategory || !editCategoryData.name.trim()) {
+      return
+    }
+
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/categories/${editingCategory.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editCategoryData)
+      })
+
+      if (!res.ok) throw new Error('Failed to update category')
+
+      await fetchData()
+      setEditingCategory(null)
+      setEditCategoryData({ name: '', description: '' })
+      setShowEditCategoryDialog(false)
+      toast({
+        title: 'सफल',
+        description: 'कैटेगरी अपडेट हो गई'
+      })
+    } catch (error) {
+      toast({
+        title: 'त्रुटि',
+        description: 'कैटेगरी अपडेट करने में विफल',
+        variant: 'destructive'
+      })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDeleteCategory = async (id: string, name: string) => {
+    if (!confirm(`क्या आप "${name}" कैटेगरी को हटाना चाहते हैं?`)) return
+
+    try {
+      const res = await fetch(`/api/categories/${id}`, {
+        method: 'DELETE'
+      })
+
+      if (!res.ok) {
+        const error = await res.json()
+        throw new Error(error.error || 'Failed to delete category')
+      }
+
+      await fetchData()
+      toast({
+        title: 'सफल',
+        description: 'कैटेगरी हटा दी गई'
+      })
+    } catch (error: any) {
+      toast({
+        title: 'त्रुटि',
+        description: error.message || 'कैटेगरी हटाने में विफल',
+        variant: 'destructive'
+      })
+    }
+  }
+
+  const openEditCategoryDialog = (category: Category) => {
+    setEditingCategory(category)
+    setEditCategoryData({
+      name: category.name,
+      description: category.description || ''
+    })
+    setShowEditCategoryDialog(true)
   }
 
   const handleAddMenuItem = async () => {
@@ -178,8 +304,56 @@ export default function MenuManagementPage() {
     }
   }
 
-  const handleDeleteItem = async (id: string) => {
-    if (!confirm('क्या आप इस आइटम को हटाना चाहते हैं?')) return
+  const openEditItemDialog = (item: MenuItem) => {
+    setEditingItem(item)
+    setEditItemData({
+      name: item.name,
+      description: item.description || '',
+      price: item.price.toString(),
+      categoryId: item.categoryId
+    })
+    setShowEditDialog(true)
+  }
+
+  const handleEditMenuItem = async () => {
+    if (!editingItem || !editItemData.name || !editItemData.price) {
+      return
+    }
+
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/menu-items/${editingItem.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...editItemData,
+          price: parseFloat(editItemData.price)
+        })
+      })
+
+      if (!res.ok) throw new Error('Failed to update menu item')
+
+      await fetchData()
+      setEditingItem(null)
+      setEditItemData({ name: '', description: '', price: '', categoryId: '' })
+      setShowEditDialog(false)
+      toast({
+        title: 'सफल',
+        description: 'मेनू आइटम अपडेट हो गया'
+      })
+    } catch (error) {
+      toast({
+        title: 'त्रुटि',
+        description: 'मेनू आइटम अपडेट करने में विफल',
+        variant: 'destructive'
+      })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDeleteItem = async (id: string, name: string) => {
+    if (!confirm(`क्या आप "${name}" आइटम को हटाना चाहते हैं?`)) return
 
     try {
       const res = await fetch(`/api/menu-items/${id}`, {
@@ -260,6 +434,103 @@ export default function MenuManagementPage() {
     }
   }
 
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      setSelectedImage(file)
+      // Create preview
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        setImagePreview(reader.result as string)
+      }
+      reader.readAsDataURL(file)
+    }
+  }
+
+  const handleImageDetect = async () => {
+    if (!selectedImage) {
+      toast({
+        title: 'त्रुटि',
+        description: 'कृपया एक चित्र चुनें',
+        variant: 'destructive'
+      })
+      return
+    }
+
+    setImageDetecting(true)
+    setDetectedItems([])
+
+    try {
+      const formData = new FormData()
+      formData.append('image', selectedImage)
+
+      const res = await fetch('/api/menu-items/image-detect', {
+        method: 'POST',
+        body: formData
+      })
+
+      if (!res.ok) throw new Error('Failed to detect items')
+
+      const data = await res.json()
+      
+      if (data.items && data.items.length > 0) {
+        setDetectedItems(data.items)
+        toast({
+          title: 'सफल',
+          description: `${data.detected} मेनू आइटम्स पता चुके हैं`
+        })
+      } else {
+        toast({
+          title: 'चेतावनी',
+          description: 'चित्र में कोई मेनू आइटम्स नहीं पता चला',
+          variant: 'destructive'
+        })
+      }
+    } catch (error) {
+      toast({
+        title: 'त्रुटि',
+        description: 'चित्र से आइटम पहचाने में विफल',
+        variant: 'destructive'
+      })
+    } finally {
+      setImageDetecting(false)
+    }
+  }
+
+  const handleSaveDetectedItems = async () => {
+    if (detectedItems.length === 0) return
+
+    setSaving(true)
+    try {
+      const savePromises = detectedItems.map((item: any) =>
+        fetch('/api/menu-items', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(item)
+        })
+      )
+
+      await Promise.all(savePromises)
+      await fetchData()
+      setShowImageDialog(false)
+      setSelectedImage(null)
+      setImagePreview('')
+      setDetectedItems([])
+      toast({
+        title: 'सफल',
+        description: `${detectedItems.length} मेनू आइटम्स सहेज़ किए गए`
+      })
+    } catch (error) {
+      toast({
+        title: 'त्रुटि',
+        description: 'आइटम्स सहेज़ करने में विफल',
+        variant: 'destructive'
+      })
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
     <DashboardLayout>
       <div className="p-6 space-y-6">
@@ -269,7 +540,24 @@ export default function MenuManagementPage() {
             <h1 className="text-3xl font-bold text-gray-900">मेनू मैनेजमेंट</h1>
             <p className="text-gray-600 mt-1">अपने रेस्टोरेंट के मेनू को प्रबंधित करें</p>
           </div>
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-3">
+            <Button
+              onClick={() => fetchData()}
+              variant="outline"
+              size="sm"
+            >
+              <RefreshCw className="w-4 h-4 mr-2" />
+              रिफ्रेश
+            </Button>
+            <Button
+              onClick={() => setAutoRefresh(!autoRefresh)}
+              variant={autoRefresh ? 'default' : 'outline'}
+              size="sm"
+              className={autoRefresh ? 'bg-green-600 hover:bg-green-700' : ''}
+            >
+              <RefreshCw className={`w-4 h-4 mr-2 ${autoRefresh ? 'animate-spin' : ''}`} />
+              {autoRefresh ? 'लाइव सिंक' : 'ऑटो सिंक'}
+            </Button>
             <Button
               onClick={() => setShowCategoryDialog(true)}
               variant="outline"
@@ -290,6 +578,13 @@ export default function MenuManagementPage() {
             >
               <Sparkles className="w-4 h-4 mr-2" />
               AI से जोड़ें
+            </Button>
+            <Button
+              onClick={() => setShowImageDialog(true)}
+              className="bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600"
+            >
+              <Upload className="w-4 h-4 mr-2" />
+              फोटो से जोड़ें
             </Button>
           </div>
         </div>
@@ -334,6 +629,48 @@ export default function MenuManagementPage() {
           </Card>
         </div>
 
+        {/* Categories List */}
+        <Card>
+          <CardHeader>
+            <CardTitle>कैटेगरीज़</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ScrollArea className="h-[300px]">
+              <div className="space-y-2">
+                {categories.map((category) => (
+                  <div
+                    key={category.id}
+                    className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+                  >
+                    <div className="flex-1">
+                      <h3 className="font-semibold text-gray-900">{category.name}</h3>
+                      <p className="text-sm text-gray-600">{category.description || 'कोई विवरण नहीं'}</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        onClick={() => openEditCategoryDialog(category)}
+                        variant="ghost"
+                        size="sm"
+                        className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                      >
+                        <Edit className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        onClick={() => handleDeleteCategory(category.id, category.name)}
+                        variant="ghost"
+                        size="sm"
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </ScrollArea>
+          </CardContent>
+        </Card>
+
         {/* Menu Items List */}
         {loading ? (
           <div className="flex items-center justify-center py-12">
@@ -347,7 +684,7 @@ export default function MenuManagementPage() {
             <CardContent>
               {menuItems.length === 0 ? (
                 <div className="text-center py-12 text-gray-500">
-                  <Package className="w-16 h-16 mx-auto mb-4 text-gray-300" />
+                  <Upload className="w-16 h-16 mx-auto mb-4 text-gray-300" />
                   <p className="text-lg">कोई मेनू आइटम नहीं है</p>
                   <p className="text-sm">ऊपर दिए गए बटन से नया आइटम जोड़ें</p>
                 </div>
@@ -380,14 +717,24 @@ export default function MenuManagementPage() {
                               </span>
                             </div>
                           </div>
-                          <Button
-                            onClick={() => handleDeleteItem(item.id)}
-                            variant="ghost"
-                            size="sm"
-                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
+                          <div className="flex gap-2">
+                            <Button
+                              onClick={() => openEditItemDialog(item)}
+                              variant="ghost"
+                              size="sm"
+                              className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                            >
+                              <Edit className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              onClick={() => handleDeleteItem(item.id, item.name)}
+                              variant="ghost"
+                              size="sm"
+                              className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
                         </div>
                       )
                     })}
@@ -482,6 +829,90 @@ export default function MenuManagementPage() {
           </DialogContent>
         </Dialog>
 
+        {/* Edit Item Dialog */}
+        <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>आइटम संपादित करें</DialogTitle>
+              <DialogDescription>
+                {editingItem?.name} को अपडेट करें
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="editName">आइटम का नाम *</Label>
+                <Input
+                  id="editName"
+                  value={editItemData.name}
+                  onChange={(e) => setEditItemData({ ...editItemData, name: e.target.value })}
+                  placeholder="जैसे: पनीर टिक्का"
+                />
+              </div>
+              <div>
+                <Label htmlFor="editCategory">कैटेगरी *</Label>
+                <Select
+                  value={editItemData.categoryId}
+                  onValueChange={(value) => setEditItemData({ ...editItemData, categoryId: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="कैटेगरी चुनें" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {categories.map((cat) => (
+                      <SelectItem key={cat.id} value={cat.id}>
+                        {cat.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="editPrice">कीमत (₹) *</Label>
+                <Input
+                  id="editPrice"
+                  type="number"
+                  step="0.01"
+                  value={editItemData.price}
+                  onChange={(e) => setEditItemData({ ...editItemData, price: e.target.value })}
+                  placeholder="0.00"
+                />
+              </div>
+              <div>
+                <Label htmlFor="editDescription">विवरण</Label>
+                <Textarea
+                  id="editDescription"
+                  value={editItemData.description}
+                  onChange={(e) => setEditItemData({ ...editItemData, description: e.target.value })}
+                  placeholder="आइटम का विवरण..."
+                  rows={3}
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowEditDialog(false)}>
+                रद्द करें
+              </Button>
+              <Button
+                onClick={handleEditMenuItem}
+                disabled={saving}
+                className="bg-gradient-to-r from-orange-500 to-amber-500"
+              >
+                {saving ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    अपडेट हो रहा है...
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-4 h-4 mr-2" />
+                    अपडेट करें
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
         {/* Add Category Dialog */}
         <Dialog open={showCategoryDialog} onOpenChange={setShowCategoryDialog}>
           <DialogContent>
@@ -515,9 +946,75 @@ export default function MenuManagementPage() {
               </Button>
               <Button
                 onClick={handleAddCategory}
+                disabled={saving}
                 className="bg-gradient-to-r from-orange-500 to-amber-500"
               >
-                जोड़ें
+                {saving ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    सहेज रहा है...
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-4 h-4 mr-2" />
+                    जोड़ें
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Edit Category Dialog */}
+        <Dialog open={showEditCategoryDialog} onOpenChange={setShowEditCategoryDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>कैटेगरी संपादित करें</DialogTitle>
+              <DialogDescription>
+                {editingCategory?.name} को अपडेट करें
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="editCatName">कैटेगरी का नाम *</Label>
+                <Input
+                  id="editCatName"
+                  value={editCategoryData.name}
+                  onChange={(e) => setEditCategoryData({ ...editCategoryData, name: e.target.value })}
+                  placeholder="जैसे: स्टार्टर्स"
+                />
+              </div>
+              <div>
+                <Label htmlFor="editCatDesc">विवरण</Label>
+                <Textarea
+                  id="editCatDesc"
+                  value={editCategoryData.description}
+                  onChange={(e) => setEditCategoryData({ ...editCategoryData, description: e.target.value })}
+                  placeholder="कैटेगरी का विवरण..."
+                  rows={3}
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowEditCategoryDialog(false)}>
+                रद्द करें
+              </Button>
+              <Button
+                onClick={handleEditCategory}
+                disabled={saving}
+                className="bg-gradient-to-r from-orange-500 to-amber-500"
+              >
+                {saving ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    अपडेट हो रहा है...
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-4 h-4 mr-2" />
+                    अपडेट करें
+                  </>
+                )}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -529,7 +1026,7 @@ export default function MenuManagementPage() {
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Sparkles className="w-5 h-5 text-purple-500" />
-                AI से मेनू आइटम बनाएं
+                AI से मेनू आइटम्स बनाएं
               </DialogTitle>
               <DialogDescription>
                 AI से bulk में मेनू आइटम्स बनाएं। बस बताएं कि क्या चाहिए।
@@ -579,11 +1076,132 @@ export default function MenuManagementPage() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {/* Image Detect Dialog */}
+        <Dialog open={showImageDialog} onOpenChange={setShowImageDialog}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Upload className="w-5 h-5 text-blue-500" />
+                फोटो से मेनू आइटम्स पहचानें
+              </DialogTitle>
+              <DialogDescription>
+                मेनू फोटो या रेस्टोरेंट का चित्र अपलोड करें, AI स्वचालित रूप से आइटम्स को पहचानेगी
+              </DialogDescription>
+            </DialogHeader>
+            
+            <div className="space-y-4">
+              {/* Image Upload */}
+              <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-blue-400 transition-colors">
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageSelect}
+                  className="hidden"
+                  id="imageUpload"
+                />
+                <label htmlFor="imageUpload" className="cursor-pointer">
+                  {imagePreview ? (
+                    <img
+                      src={imagePreview}
+                      alt="Preview"
+                      className="max-h-64 mx-auto rounded-lg shadow"
+                    />
+                  ) : (
+                    <div className="space-y-2">
+                      <Upload className="w-16 h-16 mx-auto text-gray-400" />
+                      <p className="text-gray-600">फोटो चुनें या यहाँ ड्रैग करें</p>
+                      <p className="text-sm text-gray-500">PNG, JPG, GIF (MAX 5MB)</p>
+                    </div>
+                  )}
+                </label>
+              </div>
+
+              {/* Detected Items */}
+              {detectedItems.length > 0 && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <h4 className="font-semibold text-blue-900 mb-3 flex items-center gap-2">
+                    <Sparkles className="w-5 h-5" />
+                    {detectedItems.length} आइटम्स पता चुके हैं:
+                  </h4>
+                  <ScrollArea className="h-[200px]">
+                    <div className="space-y-2">
+                      {detectedItems.map((item, index) => (
+                        <div
+                          key={index}
+                          className="flex items-center justify-between p-3 bg-white rounded border"
+                        >
+                          <div className="flex-1">
+                            <p className="font-medium text-gray-900">{item.name}</p>
+                            {item.description && (
+                              <p className="text-sm text-gray-600">{item.description}</p>
+                            )}
+                          </div>
+                          <p className="text-lg font-bold text-orange-600">
+                            ₹{item.price.toFixed(2)}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                </div>
+              )}
+            </div>
+
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowImageDialog(false)
+                  setSelectedImage(null)
+                  setImagePreview('')
+                  setDetectedItems([])
+                }}
+              >
+                <X className="w-4 h-4 mr-2" />
+                बंद करें
+              </Button>
+              {detectedItems.length > 0 ? (
+                <Button
+                  onClick={handleSaveDetectedItems}
+                  disabled={saving}
+                  className="bg-gradient-to-r from-blue-500 to-cyan-500"
+                >
+                  {saving ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      सहेज रहा है...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-4 h-4 mr-2" />
+                      सभी सहेजें ({detectedItems.length})
+                    </>
+                  )}
+                </Button>
+              ) : (
+                <Button
+                  onClick={handleImageDetect}
+                  disabled={imageDetecting || !selectedImage}
+                  className="bg-gradient-to-r from-blue-500 to-cyan-500"
+                >
+                  {imageDetecting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      पहचान में है...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4 mr-2" />
+                      पहचानें
+                    </>
+                  )}
+                </Button>
+              )}
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </DashboardLayout>
   )
-}
-
-function Package({ className }: { className?: string }) {
-  return <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
 }
