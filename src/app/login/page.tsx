@@ -106,14 +106,19 @@ export default function LoginPage() {
 
           <div className="mt-6 p-4 bg-orange-50 rounded-lg border border-orange-200">
             <p className="text-sm text-orange-800 font-medium mb-2">
-              डिफ़ॉल्ट लॉगिन विवरण:
+              डिफ़ॉल्ट लॉगिन विवरण (नया):
             </p>
-            <p className="text-sm text-orange-700">
-              ईमेल: admin@restaurant.com
-            </p>
-            <p className="text-sm text-orange-700">
-              पासवर्ड: admin123
-            </p>
+            <div className="bg-white p-3 rounded text-sm space-y-1">
+              <p className="text-gray-700">
+                <span className="font-medium">ईमेल:</span> demo@restaurant.com
+              </p>
+              <p className="text-gray-700">
+                <span className="font-medium">पासवर्ड:</span> demo123
+              </p>
+              <p className="text-gray-700">
+                <span className="font-medium">रेस्टोरेंट:</span> Demo Restaurant
+              </p>
+            </div>
           </div>
 
           <div className="text-center pt-4 border-t">
