@@ -1,7 +1,7 @@
 'use client'
 
-import { usePathname, useRouter } from 'next/navigation'
 import { useSession, signOut } from 'next-auth/react'
+import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
@@ -12,51 +12,84 @@ import {
   FileText,
   Settings,
   LogOut,
-  User
+  User,
+  X
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface DashboardLayoutProps {
   children: React.ReactNode
+  currentView?: string
+  onViewChange?: (view: 'dashboard' | 'billing' | 'menu' | 'reports' | 'settings') => void
+  sidebarOpen?: boolean
+  onSidebarToggle?: () => void
 }
 
 const navigation = [
-  { name: 'डैशबोर्ड', href: '/', icon: LayoutDashboard },
-  { name: 'क्विक बिलिंग', href: '/billing', icon: ShoppingCart },
-  { name: 'मेनू मैनेजमेंट', href: '/menu', icon: MenuIcon },
-  { name: 'रिपोर्ट्स', href: '/reports', icon: FileText },
-  { name: 'सेटिंग्स', href: '/settings', icon: Settings },
+  { name: 'डैशबोर्ड', href: 'dashboard', icon: LayoutDashboard },
+  { name: 'क्विक बिलिंग', href: 'billing', icon: ShoppingCart },
+  { name: 'मेनू मैनेजमेंट', href: 'menu', icon: MenuIcon },
+  { name: 'रिपोर्ट्स', href: 'reports', icon: FileText },
+  { name: 'सेटिंग्स', href: 'settings', icon: Settings },
 ]
 
-export function DashboardLayout({ children }: DashboardLayoutProps) {
-  const pathname = usePathname()
-  const router = useRouter()
+export function DashboardLayout({ children, currentView, onViewChange, sidebarOpen = true, onSidebarToggle }: DashboardLayoutProps) {
   const { data: session } = useSession()
+  const router = useRouter()
 
   const handleLogout = async () => {
     await signOut({ redirect: false })
     router.push('/login')
   }
 
+  const handleNavigation = (view: string) => {
+    if (onViewChange) {
+      onViewChange(view as any)
+    } else {
+      router.push(`/${view === 'dashboard' ? '' : view}`)
+    }
+  }
+
   // Don't show layout on login page
-  if (pathname === '/login') {
+  if (typeof window !== 'undefined' && (window.location.pathname === '/login' || window.location.pathname === '/signup')) {
     return <>{children}</>
   }
 
   return (
-    <div className="min-h-screen flex">
+    <div className="min-h-screen flex bg-gray-50">
+      {/* Mobile Floating Menu Button */}
+      <button
+        onClick={onSidebarToggle}
+        className="fixed top-3 left-3 z-50 lg:hidden bg-white p-2 rounded-lg shadow-lg border border-gray-200 hover:bg-gray-50 transition-colors"
+      >
+        <MenuIcon className="h-5 w-5 text-gray-700" />
+      </button>
+
       {/* Sidebar */}
-      <aside className="w-64 bg-gradient-to-b from-orange-600 to-amber-600 text-white flex flex-col fixed h-full">
-        {/* Logo */}
+      <aside
+        className={cn(
+          "fixed left-0 top-0 h-full bg-gradient-to-b from-orange-600 to-amber-600 text-white flex flex-col transition-all duration-300 z-40",
+          sidebarOpen ? "w-64 translate-x-0" : "w-64 -translate-x-full lg:translate-x-0 lg:w-64"
+        )}
+      >
+        {/* Logo & Close Button */}
         <div className="p-6 border-b border-orange-500">
-          <div className="flex items-center gap-3">
-            <div className="bg-white p-2 rounded-lg">
-              <Utensils className="w-6 h-6 text-orange-600" />
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="bg-white p-2 rounded-lg">
+                <Utensils className="w-6 h-6 text-orange-600" />
+              </div>
+              <div>
+                <h1 className="font-bold text-lg">Restaurant POS</h1>
+                <p className="text-xs text-orange-100">Billing System</p>
+              </div>
             </div>
-            <div>
-              <h1 className="font-bold text-lg">Restaurant POS</h1>
-              <p className="text-xs text-orange-100">Billing System</p>
-            </div>
+            <button
+              onClick={onSidebarToggle}
+              className="lg:hidden text-white hover:text-orange-200 transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
           </div>
         </div>
 
@@ -64,11 +97,11 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
         <ScrollArea className="flex-1 p-4">
           <nav className="space-y-2">
             {navigation.map((item) => {
-              const isActive = pathname === item.href
+              const isActive = currentView === item.href
               return (
                 <button
                   key={item.name}
-                  onClick={() => router.push(item.href)}
+                  onClick={() => handleNavigation(item.href)}
                   className={cn(
                     "w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200",
                     isActive
@@ -111,7 +144,12 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 ml-64 bg-gray-50">
+      <main
+        className={cn(
+          "flex-1 bg-gray-50 transition-all duration-300",
+          sidebarOpen ? "lg:ml-64 ml-0" : "lg:ml-64"
+        )}
+      >
         <div className="min-h-screen">
           {children}
         </div>
